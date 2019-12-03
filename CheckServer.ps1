@@ -342,16 +342,18 @@ ConvertTo-Html -Fragment
     $class = $html.CreateAttribute("class")
      
     #set the class value based on the item value
-    Switch ($td.childnodes.item(4).'#text') {
+    Switch ($td.childnodes.item(5).'#text') {
     "True" { $class.value = "CheckOK"}
     "False" { $class.value = "CheckNOK"}
     Default { $class.value = "CheckUnknown"}
     }
     #append the class
-    $td.childnodes.item(3).attributes.append($class) | Out-Null
+    $td.childnodes.item(5).attributes.append($class) | Out-Null
     }
 
-ConvertTo-HTML -Head $head -Body $html.InnerXml -PostContent “<h6>Created $(Get-Date)</h6>” | Out-File -filepath BizTalk_Server_Installation_Check_Report.htm -Encoding asci
+ConvertTo-HTML -Head $head -Body $html.InnerXml -PostContent “<h6>Created $(Get-Date)</h6>” | Out-File -filepath BizTalk_Server_Installation_Check_Report.htm -Encoding ascii
+
+$body=ConvertTo-HTML -Head $head -Body $html.InnerXml -PostContent “<h6>Created $(Get-Date)</h6>” 
 
 $emailRecipient = "nijhp1"
  
