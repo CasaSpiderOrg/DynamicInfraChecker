@@ -59,10 +59,6 @@ function Get-EnvironmentVariable {
     }
 } # Get-EnvironmentVariable
 
-#########################################################################################
-## Main Program
-#########################################################################################
-
 #$DebugPreference = "Continue"
 $DebugPreference = "SilentlyContinue"
 
@@ -74,147 +70,85 @@ $resulttable.Columns.Add("IstSituation","string") | out-null
 $resulttable.Columns.Add("Conclusion","string") | out-null
 $resulttable.Columns.Add("CheckResult","string") | out-null
 
-$MonitoringItems = "" 
-$MonitoringItems = @()
-
-$MonitoringItem1 = [PSCustomObject]@{
-    Check      = 'Config file existence'
-    CheckParam = [PSCustomObject]@{
-        Filename = 'tnsnames.ora'
-        Filepath = 'D:\app\Oracle\product\12.2.0\client_1\Network\Admin'
-    }   
+Function GetResultRow($ComputerName, $check, $SollSituation, $istSituation, $Conclusion, $CheckResult)
+{
+    $resultrow = $resulttable.NewRow()
+    $resultrow.ComputerName = $ComputerName
+    $resultrow.Check = $check
+    $resultrow.SollSituation =  $SollSituation
+    $resultrow.istSituation = $istSituation
+    $resultrow.Conclusion = $Conclusion
+    $resultrow.CheckResult = $CheckResult
+    $resulttable.Rows.Add($resultrow)     
 }
 
-$MonitoringItem2 = [PSCustomObject]@{
-    Check      = 'Program version'
-    CheckParam = [PSCustomObject]@{
-        Programname = 'Microsoft BizTalk Server 2015 Feature Update 3'
-        Programversion = '3.13.335.2'
-    }   
-}
+#########################################################################################
+## Main Program
+#########################################################################################
 
-$MonitoringItem3 = [PSCustomObject]@{
-    Check      = 'EnvironmentVariable'
-    CheckParam = [PSCustomObject]@{
-        Variablename = 'TNS_ADMIN'
-        VariableValue = 'D:\app\Oracle\product\12.2.0\client_1\Network\Admin'
+### Load External Scripts
 
-    } 
-}
+$MyDir = [System.IO.Path]::GetDirectoryName($myInvocation.MyCommand.Definition)
 
-$MonitoringItems += $MonitoringItem1
-$MonitoringItems += $MonitoringItem2
-$MonitoringItems += $MonitoringItem3
+. "$MyDir\Mail.ps1"
+. "$MyDir\ComputerGroups.ps1"
+. "$MyDir\ResultMessages.ps1"
 
-Write-Debug $($("Monitoring Items : " + $($MonitoringItems | format-Table -AutoSize | out-string)).Trim())
+##
 
-$Template1 = [PSCustomObject]@{
-        TemplateName = "BizTalkServer"
-        MonitoringItems = $MonitoringItems
-}
+# Get ComputerGroups, which includes MonitorTemplates, which includes MonitorItems
+$ComputerGroupTemplates = GetComputerGroupAssignedTemplates
 
-
-$MonitoringItems = "" 
-$MonitoringItems = @()
-
-$MonitoringItem1 = [PSCustomObject]@{
-    Check      = 'Check windows service existence'
-    CheckParam = [PSCustomObject]@{
-        ServiceName = 'OracleRemExecServiceV2'
-        ServiceStatus = 'Running'
-    }   
-}
-
-$MonitoringItems += $MonitoringItem1
-
-Write-Debug $($("Monitoring Items : " + $($MonitoringItems | format-Table -AutoSize | out-string)).Trim())
-
-$Template2 = [PSCustomObject]@{
-    TemplateName = "GenericDevelopmentServer"
-    MonitoringItems = $MonitoringItems
-}
-
-
-$Templates = "" 
-$Templates = @()
-
-$Templates += $Template1
-$Templates += $Template2
-
-$ComputerGroups = "" 
-$ComputerGroups = @()
-
-$ComputerGroup1 = [PSCustomObject]@{
-    GroupName   = 'BizTalkServers'
-    ComputerList = @('win236o1','win236o2','win236t')   
-}
-
-$ComputerGroup2 = [PSCustomObject]@{
-    GroupName   = 'GenericDevelopmentServers'
-    ComputerList = @('win155o')   
-}
-
-$ComputerGroups += $ComputerGroup1
-$ComputerGroups += $ComputerGroup2
-
-
-$ComputerGroupAssignedTemplates = ""
-$ComputerGroupAssignedTemplates = @()
-
-$ComputerGroupAssignedTemplate = [PSCustomObject]@{
-    ComputerGroup = $($ComputerGroups | where-object groupname -eq 'BizTalkServers')
-    Template = $($Templates | where-object TemplateName -eq 'BizTalkServer')
-}
-
-$ComputerGroupAssignedTemplates += $ComputerGroupAssignedTemplate
-
-$ComputerGroupAssignedTemplate = [PSCustomObject]@{
-    ComputerGroup = $($ComputerGroups | where-object groupname -eq 'GenericDevelopmentServers')
-    Template = $($Templates | where-object TemplateName -eq 'GenericDevelopmentServer')
-}
-
-$ComputerGroupAssignedTemplates += $ComputerGroupAssignedTemplate
-
-$ComputerGroupAssignedTemplates | ForEach-Object {
+#ForEach MonitorTemplate
+$ComputerGroupTemplates | ForEach-Object {
     $ComputerGrp = $_.ComputerGroup
     $Templ = $_.Template
     $ComputerList = $ComputerGrp.ComputerList
+
     write-debug "Processing ComputerList: $($ComputerList | out-string)"
+
     $MonitoringItems = $Templ.MonitoringItems
+    
+    #ForEach Computer within the Template
     $ComputerList | ForEach-Object {
         $ComputerName = $_
+
         write-debug "Processing Computer: $ComputerName"
+
+        #ForEach MonitoringItem
         $MonitoringItems | ForEach-Object {
+            
             $checkresult=$false
-            $resultrow = $resulttable.NewRow()
             $check = $_.Check
+
             write-debug "Processing check : $check"
+
             $checkparam = $_.CheckParam
+
             Write-Debug $("Check : " + $($check | Out-String)).Trim()
             Write-Debug $("Check Param : " + $($checkparam | format-Table -AutoSize | Out-String)).Trim()
+            
             switch ($check) {
-                'Config file existence' {
+
+ ##### EXISTENCE FILEPATH FILES
+
+                'FilePathExistence' {
                     $filename = $checkparam.Filename
                     $filepath = $checkparam.Filepath
                     $uncpathSoll = '\\' + $ComputerName + '\' + (($filepath -split ":")[0]).ToLower() + "`$" + ($filepath -split ":")[1] + '\' + $filename
                     $checkresult = Test-Path -Path $uncpathSoll
-                    if ($checkresult) {
-                        $uncpathIst = $uncpathSoll
-                    } else {
-                        $uncpathIst = ""
-                    }
-
-                    $resultrow.ComputerName = $ComputerName
-                    $resultrow.Check = $check
-                    $resultrow.SollSituation =  $uncpathSoll
-                    $resultrow.istSituation = $uncpathIst
-                    $resultrow.Conclusion = $(if ($checkresult) {"Config File $uncpathSoll exists"} else { "Config File $uncpathSoll doesn't exist"})
-                    $resultrow.CheckResult = $checkresult
-                    $resulttable.Rows.Add($resultrow)   
+                          if ($checkresult) {$uncpathIst = $uncpathSoll} else {$uncpathIst = ""}
+                    $Conclusion = $(if ($checkresult) {ExistsCorrect "Config File" $uncpathSoll "tested with"} else { ExistsNot "Config File" $uncpathSoll})
+                    AddResultRow $ComputerName $check $uncpathSoll $uncpathIst $Conclusion $checkresult
+   
                 }
+
+ ##### EXISTENCE WINDOWSService
+
                 'Check windows service existence' {
                     $Servicename = $checkparam.Servicename
                     $ServiceStatusSoll= $checkparam.Servicestatus
+
                     $Serviceinfo = Get-Service -ComputerName $ComputerName -name $Servicename
                     $ServiceStatusIst = $Serviceinfo.Status
                     
@@ -225,23 +159,22 @@ $ComputerGroupAssignedTemplates | ForEach-Object {
                         $ServiceExists=$false
                     }
 
-                    $resultrow.ComputerName = $ComputerName
-                    $resultrow.Check = $check
-                    $resultrow.SollSituation =  $ServiceStatusSoll
-                    $resultrow.istSituation = $ServiceStatusIst
-                    $resultrow.Conclusion = $(
-                        if ($ServiceExists -and $checkresult) {
-                            "Service : $Servicename exists and has $ServiceStatusIst status"
-                        } else { 
-                            if ($ServiceExists -and !$checkresult) {
-                                "Service : $Servicename exists, but has no $ServiceStatusSoll status"
-                            } else {
-                                "Service : $Servicename doesn't exist"
+                        $Conclusion = $(
+                        if ($ServiceExists -and $checkresult) { ExistsCorrect "Service" $Servicename $ServiceStatusIst
+                        } 
+                        else { 
+                        if ($ServiceExists -and !$checkresult) { ExistsBut "Service" $Servicename $ServiceStatusSoll
+                            } 
+                            else { ExistsNot "Service" $Servicename
                             }
-                        })                    
-                    $resultrow.CheckResult = $checkresult
-                    $resulttable.Rows.Add($resultrow)               
-                }           
+                        })
+
+                    AddResultRow $ComputerName $check $ServiceStatusSoll $ServiceStatusIst $Conclusion $checkresult              
+                 
+                }
+
+  ##### PROGRAM VERSION
+                           
                 'Program version' {
                     $programname = $checkparam.Programname
                     $programversionSoll = $checkparam.Programversion
@@ -256,28 +189,28 @@ $ComputerGroupAssignedTemplates | ForEach-Object {
                     } else {
                         $ProgramExists=$false
                     }
-
-                    $resultrow.ComputerName = $ComputerName
-                    $resultrow.Check = $check
-                    $resultrow.SollSituation =  $programversionSoll
-                    $resultrow.istSituation = $programversionIst
-                    $resultrow.Conclusion = $(
+                     $resultrow.Conclusion = $(
                         if ($ProgramExists -and $checkresult) {
-                            "Program : $programname exists and has correct version : $programversionIst"
+                                ExistsCorrect "Program" $programname $programversionIst
                         } else { 
                             if ($ProgramExists -and !$checkresult) {
-                                "Program : $programname exists, but with other version : $programversionIst"
+                                ExistsNot "Program" $programname $programversionIst
                             } else {
-                                "Program : $programname doesn't exist"
+                                ExistsNot "Program" $programname
                             }
-                        })                    
-                    $resultrow.CheckResult = $checkresult
-                    $resulttable.Rows.Add($resultrow)               
+                        })   
+
+                    AddResultRow $ComputerName $check $programversionSoll $programversionIst $Conclusion $checkresult
+
                 }
+
+  ##### ENVIRONMENT VARIABLE
+
                 'EnvironmentVariable' {
                     $variablename = $checkparam.Variablename
                     $variablevalueSoll = $checkparam.Variablevalue
                     $variablevalueIst=(Get-EnvironmentVariable -ComputerName $ComputerName -Name $variablename).VariableValue
+                    
                     if ($variablevalueIst) {
                         $VariableExists=$true
                         $checkresult = $variablevalueIst -eq $variablevalueSoll
@@ -285,22 +218,18 @@ $ComputerGroupAssignedTemplates | ForEach-Object {
                         $VariableExists=$false
                     }
                     
-                    $resultrow.ComputerName = $ComputerName
-                    $resultrow.Check = $check
-                    $resultrow.SollSituation =  $variablevalueSoll
-                    $resultrow.istSituation = $variablevalueIst
-                    $resultrow.Conclusion = $(
+                    $Conclusion = $(
                         if ($VariableExists -and $checkresult) {
-                            "Environment Variable : $variablename exists and has correct value : $variablevalueIst"
+                                ExistsCorrect "Environment Variable" $variablename $variablevalueIst
                         } else { 
                             if ($VariableExists -and !$checkresult) {
-                                "Environment Variable : $variablename exists, but with other value : $variablevalueIst"
+                                ExistsBut "Environment Variable" $variablename $variablevalueIst
                             } else {
-                                "Environment Variable $variablename doesn't exist"
+                                ExistsNot "Environment Variable" $variablename
                             }
                         })
-                    $resultrow.CheckResult = $checkresult
-                    $resulttable.Rows.Add($resultrow)                                             
+
+                    AddResultRow $ComputerName $check $variablevalueSoll $variablevalueIst $Conclusion $checkresult                                             
                 }
             }
         } 
@@ -309,35 +238,15 @@ $ComputerGroupAssignedTemplates | ForEach-Object {
 
 $resulttable
 
-$ReportTitle = "BizTalk Server Installation Check Report"
-
-$head = @"
-<Title>$ReportTitle</Title>
-<style>
-body { background-color:#FFFFFF;
-font-family:Tahoma;
-font-size:12pt; }
-td, th { border:1px solid black;
-border-collapse:collapse; }
-th { color:white;
-background-color:black; }
-table, tr, td, th { padding: 2px; margin: 0px }
-table { width:95%;margin-left:5px; margin-bottom:20px;}
-.CheckNOK {color: Red }
-.CheckOK {color: Green }
-.CheckUnknown {color: Yellow }
-</style>
-<br>
-<H1>$ReportTitle</H1>
-"@
-
 [xml]$html = $resulttable |
 Select-object ComputerName,Check,SollSituation,IstSituation,Conclusion,CheckResult |
 ConvertTo-Html -Fragment
 
 1..($html.table.tr.count-1) | ForEach-Object {
+
     #enumerate each TD
     $td = $html.table.tr[$_]
+
     #create a new class attribute
     $class = $html.CreateAttribute("class")
      
@@ -351,26 +260,10 @@ ConvertTo-Html -Fragment
     $td.childnodes.item(5).attributes.append($class) | Out-Null
     }
 
-ConvertTo-HTML -Head $head -Body $html.InnerXml -PostContent “<h6>Created $(Get-Date)</h6>” | Out-File -filepath BizTalk_Server_Installation_Check_Report.htm -Encoding ascii
 
-$body=ConvertTo-HTML -Head $head -Body $html.InnerXml -PostContent “<h6>Created $(Get-Date)</h6>” 
+$head = GetHeader
+ConvertTo-HTML -Head $head -Body $html.InnerXml -PostContent "<h6>Created $(Get-Date)</h6>"� | Out-File -filepath BizTalk_Server_Installation_Check_Report.htm -Encoding ascii
+$body = ConvertTo-HTML -Head $head -Body $html.InnerXml -PostContent "<h6>Created $(Get-Date)</h6>" 
 
-$emailRecipient = "nijhp1"
- 
-$emailSmtpServer = "mail"
-$emailMessage = New-Object System.Net.Mail.MailMessage
-$From='enges1'
-$emailMessage.From = $From + '@brabantwater.nl'
-$SMTPClient = New-Object System.Net.Mail.SmtpClient( $emailSmtpServer)   
-
-$emailMessageManagentInfo=$emailMessage
-
-$subjectText = "BizTalk Server Installation Check Report"
-$emailMessageManagentInfo.Subject = $subjectText
-$emailMessageManagentInfo.IsBodyHtml = $true
-$emailMessageManagentInfo.Body = $Body 
-
-$To1=$emailRecipient
-$emailMessageManagentInfo.To.Add( ($To1 + '@brabantwater.nl') )
-        
-$SMTPClient.Send( $emailMessageManagentInfo )
+# Send Mail
+SendMail $body
