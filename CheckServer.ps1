@@ -70,7 +70,7 @@ $resulttable.Columns.Add("IstSituation","string") | out-null
 $resulttable.Columns.Add("Conclusion","string") | out-null
 $resulttable.Columns.Add("CheckResult","string") | out-null
 
-Function GetResultRow($ComputerName, $check, $SollSituation, $istSituation, $Conclusion, $CheckResult)
+Function AddResultRow($ComputerName, $check, $SollSituation, $istSituation, $Conclusion, $CheckResult)
 {
     $resultrow = $resulttable.NewRow()
     $resultrow.ComputerName = $ComputerName
